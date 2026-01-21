@@ -1,0 +1,176 @@
+// import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Image, FlatList } from 'react-native';
+// import React, { useState, useEffect } from 'react';
+// import { useRouter } from 'expo-router';
+// import Z from '../../assets/images/Z.png';
+
+// export default function Index() {
+//   const router = useRouter();
+//   const [userName, setUserName] = useState('User');
+//   const [searchQuery, setSearchQuery] = useState('');
+//   const [currentQuote, setCurrentQuote] = useState('');
+//   const [loans, setLoans] = useState([]);
+//   const [filteredLoans, setFilteredLoans] = useState([]);
+
+//   const tamilQuotes = [
+//     "வெற்றி பெற முதலில் நம்பிக்கை வேண்டும்",
+//     "கடின உழைப்பே வெற்றியின் சாவி",
+//     "நேற்று கனவு கண்டது இன்று நனவாகும்",
+//     "தோல்வி என்பது முயற்சியின் ஆரம்பம்",
+//     "உன் எண்ணமே உன் எதிர்காலம்",
+//     "முயற்சி திருவினை ஆக்கும்",
+//     "நம்பிக்கையே வெற்றியின் முதல் படி",
+//   ];
+
+//   useEffect(() => {
+//     fetchUserName();
+//     fetchLoans();
+//     const dayOfYear = Math.floor((new Date() - new Date(new Date().getFullYear(), 0, 0)) / 86400000);
+//     const quoteIndex = dayOfYear % tamilQuotes.length;
+//     setCurrentQuote(tamilQuotes[quoteIndex]);
+//   }, []);
+
+//   const fetchUserName = async () => {
+//     try {
+//       setUserName('Tamil');
+//     } catch (error) {
+//       console.error('Error fetching user name:', error);
+//     }
+//   };
+
+//   const fetchLoans = async () => {
+//     try {
+//       const mockLoans = [
+//         { id: '1', loanId: 'Z00028', companyName: 'Nawin', amount: '₹50,000', status: 'Active' },
+//         { id: '2', loanId: 'Z00029', companyName: 'Kiruba', amount: '₹75,000', status: 'Pending' },
+//         { id: '3', loanId: 'Z00031', companyName: 'Jothika', amount: '₹1,00,000', status: 'Active' },
+//         { id: '4', loanId: 'Z00032', companyName: 'Benita', amount: '₹60,000', status: 'Completed' },
+//       ];
+//       setLoans(mockLoans);
+//       setFilteredLoans(mockLoans);
+//     } catch (error) {
+//       console.error('Error fetching loans:', error);
+//     }
+//   };
+
+//   const getFirstLetter = () => {
+//     return userName.charAt(0).toUpperCase();
+//   };
+
+//   const getCurrentTime = () => {
+//     const now = new Date();
+//     return now.toLocaleTimeString('en-IN', { 
+//       hour: '2-digit',
+//       minute: '2-digit',
+//       timeZone: 'Asia/Kolkata'
+//     });
+//   };
+
+//   const getCurrentDate = () => {
+//     const now = new Date();
+//     return now.toLocaleDateString('en-IN', { 
+//       weekday: 'long',
+//       year: 'numeric',
+//       timeZone: 'Asia/Kolkata'
+//     });
+//   };
+
+//   const handleSearch = (text) => {
+//     setSearchQuery(text);
+
+//     if (text.trim() === '') {
+//       setFilteredLoans(loans);
+//     } else {
+//       const filtered = loans.filter(loan => 
+//         loan.loanId.toLowerCase().includes(text.toLowerCase()) ||
+//         loan.companyName.toLowerCase().includes(text.toLowerCase())
+//       );
+//       setFilteredLoans(filtered);
+//     }
+//   };
+
+//   const handleCardPress = (loan) => {
+//     router.push({
+//       pathname: '/LoanDetails',
+//       params: { loanId: loan.loanId }
+//     });
+//   };
+
+//   const renderLoanCard = ({ item }) => (
+//     <TouchableOpacity 
+//       style={styles.cardItem}
+//       onPress={() => handleCardPress(item)}
+//       activeOpacity={0.7}>
+//       <View style={styles.cardLeft}>
+//         <View style={styles.logoContainer}>
+//           <Image 
+//             source={Z} 
+//             style={styles.cardLogo}
+//             resizeMode='contain'
+//           />
+//         </View>
+//         <View style={styles.cardInfo}>
+//           <Text style={styles.companyName}>{item.companyName}</Text>
+//           <Text style={styles.loanId}>Loan ID : {item.loanId}</Text>
+//         </View>
+//       </View>
+//       <View style={styles.cardRight}>
+//         <Text style={styles.viewText}>View</Text>
+//         <Text style={styles.arrowIcon}>›</Text>
+//       </View>
+//     </TouchableOpacity>
+//   );
+
+//   return (
+//     <ScrollView style={styles.container}>
+//       <View style={styles.header}>
+//         <View style={styles.headerLeft}>
+//           <Text style={styles.greeting}>Vanakam {userName}!</Text>
+//           <Text style={styles.time}>{getCurrentTime()}</Text>
+//           <Text style={styles.date}>{getCurrentDate()}</Text>
+//         </View>
+//         <TouchableOpacity 
+//           style={styles.profileIcon}
+//           onPress={() => router.push('/Profile')}
+//         >
+//           <Text style={styles.profileLetter}>{getFirstLetter()}</Text>
+//         </TouchableOpacity>
+//       </View>
+
+//       <View style={styles.searchContainer}>
+//         <View style={styles.searchBar}>
+//           <Text style={styles.searchIcon}>🔍</Text>
+//           <TextInput
+//             style={styles.searchInput}
+//             placeholder="Search by Loan ID or Company"
+//             placeholderTextColor="#999"
+//             value={searchQuery}
+//             onChangeText={handleSearch}
+//           />
+//         </View>
+//       </View>
+
+//       <Text style={styles.dashboardTitle}>DASHBOARD</Text>
+
+//       <View style={styles.quoteContainer}>
+//         <Text style={styles.quoteLabel}>Quote of the Day</Text>
+//         <Text style={styles.quoteText}>{currentQuote}</Text>
+//       </View>
+
+//       <View style={styles.contentArea}>
+//         {filteredLoans.length > 0 ? (
+//           <FlatList
+//             data={filteredLoans}
+//             renderItem={renderLoanCard}
+//             keyExtractor={(item) => item.id}
+//             scrollEnabled={false}
+//             contentContainerStyle={styles.listContainer}
+//           />
+//         ) : (
+//           <View style={styles.noResultsContainer}>
+//             <Text style={styles.noResultsText}>No loans found</Text>
+//           </View>
+//         )}
+//       </View>
+//     </ScrollView>
+//   );
+// }
