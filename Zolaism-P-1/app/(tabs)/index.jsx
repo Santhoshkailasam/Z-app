@@ -168,7 +168,7 @@ export default function Dashboard() {
               <TouchableOpacity
                 key={loan.loan_no || index}
                 style={styles.loanCard}
-                onPress={() => router.push(`/loan/${loan.loan_no}`)} // 👈 navigate dynamically
+               onPress={() => router.push(`/loan/${loan.loan_no}`)}
               >
                 <View style={styles.cardTopRow}>
                   {/* 🔵 Borrower Initial */}

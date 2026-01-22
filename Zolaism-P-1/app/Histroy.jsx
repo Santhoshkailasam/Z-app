@@ -3,18 +3,26 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import { useLocalSearchParams } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect } from 'expo-router';
 
 export default function Histroy() {
   const router = useRouter();
   const [paymentHistory, setPaymentHistory] = useState([]);
   const [filterType, setFilterType] = useState('all');
+  const params = useLocalSearchParams();
 
-  useEffect(() => {
-    fetchPaymentHistory();
-  }, []);
 
-  const fetchPaymentHistory = async () => {
-    try {
+  const STORAGE_KEY = 'PAYMENT_HISTORY';
+
+const fetchPaymentHistory = async () => {
+  try {
+    const storedHistory = await AsyncStorage.getItem(STORAGE_KEY);
+
+    if (storedHistory) {
+      setPaymentHistory(JSON.parse(storedHistory));
+    } else {
       const mockHistory = [
         {
           id: '1',
@@ -25,109 +33,71 @@ export default function Histroy() {
           status: 'Success',
           transactionId: 'TXN123456789',
           loanId: 'Z00029',
-          invoiceUrl: 'https://example.com/invoice/TXN123456789.pdf'
-        },
-        {
-          id: '2',
-          amount: 500,
-          date: '2025-10-01',
-          time: '02:15 PM',
-          paymentMethod: 'Cash',
-          status: 'Success',
-          transactionId: 'TXN123456788',
-          loanId: 'Z00029',
-          invoiceUrl: 'https://example.com/invoice/TXN123456788.pdf'
-        },
-        {
-          id: '3',
-          amount: 250,
-          date: '2025-09-28',
-          time: '11:45 AM',
-          paymentMethod: 'GPay',
-          status: 'Success',
-          transactionId: 'TXN123456787',
-          loanId: 'Z00029',
-          invoiceUrl: 'https://example.com/invoice/TXN123456787.pdf'
-        },
-        {
-          id: '4',
-          amount: 400,
-          date: '2025-09-25',
-          time: '04:00 PM',
-          paymentMethod: 'Cash',
-          status: 'Success',
-          transactionId: 'TXN123456786',
-          loanId: 'Z00029',
-          invoiceUrl: 'https://example.com/invoice/TXN123456786.pdf'
-        },
-        {
-          id: '5',
-          amount: 300,
-          date: '2025-09-20',
-          time: '09:30 AM',
-          paymentMethod: 'GPay',
-          status: 'Success',
-          transactionId: 'TXN123456785',
-          loanId: 'Z00029',
-          invoiceUrl: 'https://example.com/invoice/TXN123456785.pdf'
         },
       ];
+
       setPaymentHistory(mockHistory);
-    } catch (error) {
-      console.error('Error fetching payment history:', error);
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(mockHistory));
     }
-  };
+  } catch (error) {
+    console.error('Error loading history', error);
+  }
+};
 
-  const downloadInvoice = async (payment) => {
-    try {
-      Alert.alert(
-        'Download Invoice',
-        `Download invoice for ₹${payment.amount}?`,
-        [
-          {
-            text: 'Cancel',
-            style: 'cancel',
-          },
-          {
-            text: 'Download',
-            onPress: async () => {
-              try {
-                // Show loading
-                Alert.alert('Downloading', 'Please wait...');
+ const downloadInvoice = async (payment) => {
+  if (!payment.invoicePath) {
+    Alert.alert(
+      'Invoice not available',
+      'This payment was made before invoice generation was added.'
+    );
+    return;
+  }
 
-                // Download file
-                const fileUri = FileSystem.documentDirectory + `invoice_${payment.transactionId}.pdf`;
-                
-                const downloadResult = await FileSystem.downloadAsync(
-                  payment.invoiceUrl,
-                  fileUri
-                );
+  const fileInfo = await FileSystem.getInfoAsync(payment.invoicePath);
 
-                if (downloadResult.status === 200) {
-                  // Share or open the file
-                  const canShare = await Sharing.isAvailableAsync();
-                  
-                  if (canShare) {
-                    await Sharing.shareAsync(downloadResult.uri);
-                  } else {
-                    Alert.alert('Success', 'Invoice downloaded successfully');
-                  }
-                } else {
-                  Alert.alert('Error', 'Failed to download invoice');
-                }
-              } catch (error) {
-                console.error('Download error:', error);
-                Alert.alert('Error', 'Failed to download invoice. Please try again.');
-              }
-            },
-          },
-        ]
-      );
-    } catch (error) {
-      console.error('Error:', error);
-      Alert.alert('Error', 'Something went wrong');
-    }
-  };
+  if (!fileInfo.exists) {
+    Alert.alert('Invoice file missing');
+    return;
+  }
+
+  const canShare = await Sharing.isAvailableAsync();
+  if (canShare) {
+    await Sharing.shareAsync(payment.invoicePath);
+  } else {
+    Alert.alert('Invoice saved at', payment.invoicePath);
+  }
+};
+
+ useFocusEffect(
+  React.useCallback(() => {
+    const loadHistory = async () => {
+      try {
+        const stored = await AsyncStorage.getItem(STORAGE_KEY);
+        let history = stored ? JSON.parse(stored) : [];
+
+        if (params?.payment) {
+          const newPayment = JSON.parse(params.payment);
+
+          history = [
+            { id: Date.now().toString(), ...newPayment },
+            ...history,
+          ];
+
+          await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+        }
+
+        setPaymentHistory(history);
+      } catch (e) {
+        console.error('History load error', e);
+      }
+    };
+
+    loadHistory();
+  }, [params?.payment])
+);
+
+
+
 
   const getFilteredHistory = () => {
     if (filterType === 'all') {

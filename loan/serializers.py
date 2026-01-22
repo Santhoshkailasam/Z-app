@@ -1,4 +1,5 @@
 from rest_framework import serializers
+import datetime
 from django.db import models
 from .models import Loan, Payment
 
@@ -73,26 +74,33 @@ class LoanSummarySerializer(serializers.ModelSerializer):
     paid_installments = serializers.SerializerMethodField()
     unpaid_installments = serializers.SerializerMethodField()
     payment_history = serializers.SerializerMethodField()
+    upcoming_dues = serializers.SerializerMethodField()
+    overdue_dues = serializers.SerializerMethodField()
 
     class Meta:
         model = Loan
         fields = [
-            "loan_no", "borrower_name", "phone", "email",
+            "loan_no", "borrower_name", "phone", "email",'address',
             "principal_amount", "outstanding", "remaining_due", "status",
             "total_paid", "last_payment_date", "next_due_date",
-            "paid_installments", "unpaid_installments", "payment_history"
+            "paid_installments", "unpaid_installments",
+            "upcoming_dues", "overdue_dues",
+            "payment_history"
         ]
 
     def get_total_paid(self, obj):
-        total = obj.payments.filter(status="PAID").aggregate(total_sum=models.Sum("amount"))["total_sum"]
+        total = obj.payments.filter(status="PAID") \
+            .aggregate(total_sum=models.Sum("amount"))["total_sum"]
         return str(total or "0.00")
 
     def get_last_payment_date(self, obj):
-        last_payment = obj.payments.filter(status="PAID").order_by("-paid_date").first()
+        last_payment = obj.payments.filter(status="PAID") \
+            .order_by("-paid_date").first()
         return last_payment.paid_date if last_payment else None
 
     def get_next_due_date(self, obj):
-        next_payment = obj.payments.filter(status="PENDING").order_by("due_date").first()
+        next_payment = obj.payments.filter(status="PENDING") \
+            .order_by("due_date").first()
         return next_payment.due_date if next_payment else None
 
     def get_paid_installments(self, obj):
@@ -104,3 +112,13 @@ class LoanSummarySerializer(serializers.ModelSerializer):
     def get_payment_history(self, obj):
         payments = obj.payments.all().order_by("-paid_date")
         return PaymentHistorySerializer(payments, many=True).data
+   
+    def get_upcoming_dues(self, obj):
+        return PaymentHistorySerializer(
+            obj.upcoming_payments(), many=True
+        ).data
+
+    def get_overdue_dues(self, obj):
+        return PaymentHistorySerializer(
+            obj.overdue_payments(), many=True
+        ).data

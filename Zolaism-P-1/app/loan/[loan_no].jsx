@@ -7,25 +7,45 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { PieChart } from 'react-native-chart-kit';
 import Z from '../../assets/images/Z.png';
 import { getLoanSummary } from '../../services/loanSummary';
+import * as Print from 'expo-print';
+import { Picker } from '@react-native-picker/picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+
 
 export default function LoanDetail() {
+
+  const InvoiceRow = ({ label, value }) => (
+  <View style={invoiceStyles.row}>
+    <Text style={invoiceStyles.label}>{label}</Text>
+    <Text style={invoiceStyles.value}>{value || '-'}</Text>
+  </View>
+);
   const router = useRouter();
-  const { loan_no } = useLocalSearchParams();
+ const params = useLocalSearchParams();
+ const loan_no =typeof params.loan_no === 'string' ? params.loan_no : undefined;
+
   const [loanData, setLoanData] = useState(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState(null);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [loading, setLoading] = useState(true);
+  const [paymentMethod, setPaymentMethod] = useState('gpay');
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [invoiceData, setInvoiceData] = useState(null);
 
-  useEffect(() => {
-    fetchLoanDetails();
-  }, []);
+ useEffect(() => {
+  if (!loan_no) return;
+  fetchLoanDetails();
+}, [loan_no]);
+
+
 
   const fetchLoanDetails = async () => {
     try {
       setLoading(true);
       const data = await getLoanSummary(loan_no);
-      setLoanData(data);
+      setLoanData(data.summary);
     } catch (error) {
       Alert.alert('Error', 'Failed to fetch loan details.');
       console.error(error);
@@ -39,31 +59,80 @@ export default function LoanDetail() {
     setPaymentAmount('');
     setShowPaymentModal(true);
   };
+  
 
-  const handlePayment = () => {
-    const enteredAmount = parseFloat(paymentAmount);
-    const dueAmount = selectedPayment.amount;
+const handlePayment = async () => {
+  const enteredAmount = parseFloat(paymentAmount);
+  const dueAmount = Number(selectedPayment?.amount || 0);
 
-    if (!paymentAmount || isNaN(enteredAmount)) {
-      Alert.alert('Invalid Amount', 'Please enter a valid amount');
-      return;
-    }
-    if (enteredAmount <= 0) {
-      Alert.alert('Invalid Amount', 'Amount must be greater than 0');
-      return;
-    }
-    if (enteredAmount > dueAmount) {
-      Alert.alert('Amount Exceeded', `Payment amount cannot exceed ₹${dueAmount}`);
-      return;
-    }
+  if (!paymentAmount || isNaN(enteredAmount)) {
+    Alert.alert('Invalid Amount', 'Please enter a valid amount');
+    return;
+  }
+  if (enteredAmount <= 0) {
+    Alert.alert('Invalid Amount', 'Amount must be greater than 0');
+    return;
+  }
+  if (enteredAmount > dueAmount) {
+    Alert.alert('Amount Exceeded', `Payment amount cannot exceed ₹${dueAmount}`);
+    return;
+  }
 
-    console.log(`Processing payment of ₹${enteredAmount} for payment ID: ${selectedPayment.id}`);
-    
-    setShowPaymentModal(false);
-    Alert.alert('Payment Successful', `₹${enteredAmount} has been paid successfully`);
-    
-    fetchLoanDetails();
+  const paymentData = {
+    id: Date.now().toString(),
+    amount: enteredAmount,
+    date: new Date().toISOString().split('T')[0],
+    time: new Date().toLocaleTimeString('en-IN'),
+    paymentMethod: paymentMethod === 'cash' ? 'Cash' : 'GPay',
+    status: 'Success',
+    transactionId: `TXN${Date.now()}`,
+    loanId: loanData.loan_no,
   };
+
+  try {
+    // ✅ SAVE TO ASYNC STORAGE
+    const existing = await AsyncStorage.getItem('PAYMENT_HISTORY');
+    const history = existing ? JSON.parse(existing) : [];
+
+    const updatedHistory = [paymentData, ...history];
+
+    await AsyncStorage.setItem(
+      'PAYMENT_HISTORY',
+      JSON.stringify(updatedHistory)
+    );
+
+    // UI updates
+    setShowPaymentModal(false);
+    setInvoiceData(paymentData);
+    setShowInvoiceModal(true);
+
+    Alert.alert('Payment Successful', `₹${enteredAmount} has been paid successfully`);
+
+    fetchLoanDetails();
+  } catch (error) {
+    console.error(error);
+    Alert.alert('Error', 'Failed to save payment');
+  }
+};
+
+
+const handlePrintInvoice = async () => {
+  try {
+    const html = `
+      <h2>Invoice</h2>
+      <p><b>Transaction ID:</b> ${invoiceData?.transactionId}</p>
+      <p><b>Loan ID:</b> ${invoiceData?.loanId}</p>
+      <p><b>Amount:</b> ₹${invoiceData?.amount}</p>
+      <p><b>Payment Method:</b> ${invoiceData?.paymentMethod}</p>
+      <p><b>Date:</b> ${invoiceData?.date}</p>
+      <p><b>Time:</b> ${invoiceData?.time}</p>
+      <p><b>Status:</b> ${invoiceData?.status}</p>
+    `;
+    await Print.printAsync({ html });
+  } catch (e) {
+    Alert.alert('Error', 'Unable to print invoice');
+  }
+};
 
   const handleCloseModal = () => {
     setShowPaymentModal(false);
@@ -88,7 +157,10 @@ export default function LoanDetail() {
   }
 
   const renderPaymentCard = (payment, showPayButton = true) => (
-    <View key={payment.id} style={styles.paymentCard}>
+   <View
+      key={payment.id ?? `${payment.amount}-${payment.due_date}`}
+      style={styles.paymentCard}>
+
       <View style={styles.paymentLeft}>
         <View style={styles.paymentIconContainer}>
           <Image source={Z} style={styles.paymentIcon} resizeMode="contain" />
@@ -110,23 +182,40 @@ export default function LoanDetail() {
       )}
     </View>
   );
+   const payments = Array.isArray(loanData?.payment_history)
+       ? loanData.payment_history
+        : [];
 
-  const pieChartData = [
-    {
-      name: 'Outstanding',
-      population: loanData.outstanding,
-      color: '#6B00E6',
-      legendFontColor: '#000',
-      legendFontSize: 14,
-    },
-    {
-      name: 'Remaining Due',
-      population: loanData.remaining_due || loanData.remainingDue,
-      color: '#A78BFA',
-      legendFontColor: '#000',
-      legendFontSize: 14,
-    },
-  ];
+    const today = new Date();
+
+    const overduePayments = payments.filter(p =>
+         p.due_date && new Date(p.due_date) < today
+       );
+
+     const upcomingPayments = payments.filter(p =>
+       p.due_date && new Date(p.due_date) >= today
+     );
+
+       const hasChartData =
+       Number(loanData?.outstanding) > 0 ||
+       Number(loanData?.remaining_due || loanData?.remainingDue) > 0;
+
+      const pieChartData = hasChartData
+         ? [
+             {
+                name: 'Outstanding',
+                population: Number(loanData.outstanding),
+               color: '#6B00E6',
+             },
+             {
+               name: 'Remaining Due',
+                population: Number(loanData.remaining_due || loanData.remainingDue),
+               color: '#A78BFA',
+                },
+          ]     
+          : [];
+
+
 
   return (
     <>
@@ -137,8 +226,8 @@ export default function LoanDetail() {
             <Text style={styles.backIcon}>←</Text>
           </TouchableOpacity>
           <View style={styles.headerCenter}>
-            <Text style={styles.headerTitle}>{loanData.company_name || loanData.companyName}</Text>
-            <Text style={styles.headerSubtitle}>ID : {loanData.id}</Text>
+            <Text style={styles.headerTitle}> {loanData.borrower_name} </Text>
+            <Text style={styles.headerSubtitle}>ID : {loanData.loan_no}</Text>
           </View>
           <View style={styles.headerRight} />
         </View>
@@ -154,18 +243,21 @@ export default function LoanDetail() {
           <View style={styles.chartSection}>
             <Text style={styles.chartTitle}>Amount Due</Text>
             <View style={styles.chartContainer}>
-              <PieChart
-                data={pieChartData}
-                width={Dimensions.get('window').width - 40}
-                height={220}
-                chartConfig={{ color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})` }}
-                accessor="population"
-                backgroundColor="transparent"
-                paddingLeft="15"
-                absolute
-                hasLegend={false}
-              />
-              
+            {/* piechart */}
+             {hasChartData && (
+           <PieChart
+             data={pieChartData}
+             width={Dimensions.get('window').width - 40}
+             height={220}
+             chartConfig={{ color: () => '#000' }}
+             accessor="population"
+             backgroundColor="transparent"
+             paddingLeft="15"
+             absolute
+             hasLegend={false}
+             style={{ alignSelf: 'center' }}
+           />
+         )}
               <View style={styles.chartLegend}>
                 <View style={styles.legendItem}>
                   <View style={[styles.legendColor, { backgroundColor: '#6B00E6' }]} />
@@ -180,50 +272,58 @@ export default function LoanDetail() {
               </View>
             </View>
           </View>
-
-          <Text style={styles.sectionHeading}>Overdue</Text>
+          {/* Overdues */}
+           <Text style={styles.sectionHeading}>Overdue</Text>
           <View style={styles.paymentsContainer}>
-            {loanData.outstanding_payments?.map(payment => renderPaymentCard(payment))}
+            {loanData.overdue_dues?.map(payment => renderPaymentCard(payment))}
           </View>
-
+          {/* Upcoming Dues */}
           <Text style={styles.sectionHeading}>Upcoming</Text>
           <View style={styles.paymentsContainer}>
-            {loanData.upcoming_payments?.map(payment => renderPaymentCard(payment))}
+            {loanData.upcoming_dues?.map(payment => renderPaymentCard(payment))}
           </View>
-
+          {/* Personal details */}
           <Text style={styles.sectionHeading}>Personal Details</Text>
           <View style={styles.personalDetailsCard}>
             <View style={styles.detailField}>
               <Text style={styles.fieldLabel}>Address</Text>
               <View style={styles.fieldValue}>
-                <Text style={styles.fieldText}>{loanData.personal_details?.address}</Text>
+                <Text style={styles.fieldText}>{loanData.address}</Text>
               </View>
             </View>
 
             <View style={styles.detailField}>
               <Text style={styles.fieldLabel}>Phone</Text>
               <View style={styles.fieldValue}>
-                <Text style={styles.fieldText}>{loanData.personal_details?.phone}</Text>
+                <Text style={styles.fieldText}>{loanData.phone}</Text>
               </View>
             </View>
 
             <View style={styles.detailField}>
               <Text style={styles.fieldLabel}>Email</Text>
               <View style={styles.fieldValue}>
-                <Text style={styles.fieldText}>{loanData.personal_details?.email}</Text>
+                <Text style={styles.fieldText}>{loanData.email}</Text>
               </View>
             </View>
           </View>
-
+          
+          {/* Payment History */}
           <TouchableOpacity 
             style={styles.historyButton}
-            onPress={() => router.push('/History')}
-          >
+            onPress={() =>
+              router.push({
+              pathname: '/Histroy',
+              params: {},
+           })
+          }>
             <Text style={styles.historyButtonText}>History</Text>
             <Text style={styles.historyArrow}>›</Text>
           </TouchableOpacity>
-        </View>
+          </View>
+        
       </ScrollView>
+    
+ 
 
       {/* Payment Modal */}
       <Modal
@@ -264,9 +364,24 @@ export default function LoanDetail() {
                         onChangeText={setPaymentAmount}
                       />
                     </View>
+                
+
+                    {/* Payment Method Dropdown */}
+                    <Text style={styles.inputLabel}>Payment Method</Text>
+                    <View style={styles.dropdownContainer}>
+                      <Picker
+                        selectedValue={paymentMethod}
+                        onValueChange={(itemValue) => setPaymentMethod(itemValue)}
+                        style={styles.picker}
+                      >
+                        <Picker.Item label="Select Payment Method" value="" />
+                        <Picker.Item label="GPay" value="gpay" />
+                        <Picker.Item label="Cash" value="cash" />
+                      </Picker>
+                      </View>
 
                     <View style={styles.modalButtons}>
-                      <TouchableOpacity style={styles.cancelButton} onPress={handleCloseModal}>
+                      <TouchableOpacity style={styles.cancelButton} >
                         <Text style={styles.cancelButtonText}>Cancel</Text>
                       </TouchableOpacity>
 
@@ -281,10 +396,52 @@ export default function LoanDetail() {
           </TouchableWithoutFeedback>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* Invoice Model */}
+      <Modal
+  visible={showInvoiceModal}
+  transparent
+  animationType="fade"
+  onRequestClose={() => setShowInvoiceModal(false)}
+>
+  <View style={invoiceStyles.overlay}>
+    <View style={invoiceStyles.modal}>
+
+      <Text style={invoiceStyles.title}>Invoice</Text>
+      <Text style={invoiceStyles.success}>Payment Successful</Text>
+
+      <InvoiceRow label="Transaction ID" value={invoiceData?.transactionId} />
+      <InvoiceRow label="Loan ID" value={invoiceData?.loanId} />
+      <InvoiceRow label="Amount" value={`₹${invoiceData?.amount}`} />
+      <InvoiceRow label="Method" value={invoiceData?.paymentMethod} />
+      <InvoiceRow label="Date" value={invoiceData?.date} />
+      <InvoiceRow label="Time" value={invoiceData?.time} />
+      <InvoiceRow label="Status" value={invoiceData?.status} />
+
+      <View style={invoiceStyles.buttonRow}>
+        <TouchableOpacity
+          style={invoiceStyles.printButton}
+          onPress={handlePrintInvoice}
+        >
+          <Text style={invoiceStyles.buttonText}>Print</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={invoiceStyles.doneButton}
+          onPress={() => setShowInvoiceModal(false)}
+        >
+          <Text style={invoiceStyles.buttonText}>Done</Text>
+        </TouchableOpacity>
+      </View>
+
+    </View>
+  </View>
+</Modal>
+ 
     </>
   );
 }
-
+ 
 
 const styles = StyleSheet.create({
   container: {
@@ -614,4 +771,79 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#FFF',
   },
+  dropdownContainer: {
+  marginTop: 10,
+  marginBottom: 20,
+  borderWidth: 1,
+  borderColor: '#E5E5E5',
+  borderRadius: 12,
+  backgroundColor: '#F5F5F5',
+  overflow: 'hidden', 
+  
+},
+
+picker: {
+  height: 60,           
+  width: '100%',
+  color: '#000',
+},
+
 });
+
+const invoiceStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modal: {
+    width: '90%',
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    padding: 20,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  success: {
+    color: '#1E8E3E',
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 15,
+  },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  label: { color: '#666' },
+  value: { fontWeight: '600' },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 20,
+  },
+  printButton: {
+    flex: 1,
+    backgroundColor: '#444',
+    padding: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  doneButton: {
+    flex: 1,
+    backgroundColor: '#8B2323',
+    padding: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  buttonText: {
+    color: '#FFF',
+    fontWeight: '600',
+  },
+});
+

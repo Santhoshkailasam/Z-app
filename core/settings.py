@@ -160,7 +160,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 from corsheaders.defaults import default_headers
 
 CORS_ALLOWED_ORIGINS = [  
-    "http://192.168.29.26:8081",    
+    "http://192.168.29.157:8081",    
     
 ]
 

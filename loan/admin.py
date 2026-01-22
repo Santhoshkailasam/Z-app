@@ -5,58 +5,22 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from .models import Loan, Payment
 
-# @admin.register(Loan)
-# class LoanAdmin(admin.ModelAdmin):
-#     list_display = ('loan_no', 'borrower_name', 'principal_amount', 'outstanding', 'remaining_due', 'status', 'created_by', 'created_at')
-#     search_fields = ('loan_no', 'borrower_name', 'phone', 'email')
-#     list_filter = ('status', 'created_at')
-#     readonly_fields = ('created_at',)
-#     actions = ['export_loans_csv', 'export_loans_pdf']
-
-#     def export_loans_csv(self, request, queryset):
-#         response = HttpResponse(content_type='text/csv')
-#         response['Content-Disposition'] = 'attachment; filename="loans.csv"'
-
-#         writer = csv.writer(response)
-#         writer.writerow(['Loan No', 'Borrower', 'Principal', 'Outstanding', 'Status', 'Created At'])
-#         for loan in queryset:
-#             writer.writerow([loan.loan_no, loan.borrower_name, loan.principal_amount, loan.outstanding, loan.status, loan.created_at])
-
-#         return response
-#     export_loans_csv.short_description = "Export as CSV"
-
-#     def export_loans_pdf(self, request, queryset):
-#         response = HttpResponse(content_type='application/pdf')
-#         response['Content-Disposition'] = 'attachment; filename="loans.pdf"'
-
-#         p = canvas.Canvas(response, pagesize=A4)
-#         y = 800
-#         p.setFont("Helvetica", 12)
-#         p.drawString(200, 820, "Loan Report")
-
-#         for loan in queryset:
-#             y -= 20
-#             p.drawString(50, y, f"{loan.loan_no} | {loan.borrower_name} | ₹{loan.principal_amount} | {loan.status}")
-
-#             if y < 100:  # new page
-#                 p.showPage()
-#                 p.setFont("Helvetica", 12)
-#                 y = 800
-
-#         p.save()
-#         return response
-#     export_loans_pdf.short_description = "Export as PDF"
-
+class PaymentInline(admin.TabularInline):
+    model = Payment
+    extra = 0
+    readonly_fields = ('paid_date',)
+    fields = ('amount', 'due_date', 'status', 'paid_date', 'mode', 'remarks')
+    search_fields = ('loan__loan_no',)
 
 @admin.register(Loan)
 class LoanAdmin(admin.ModelAdmin):
-    list_display = ('loan_no', 'borrower_name', 'principal_amount', 'outstanding', 'status', 'created_at')
+    list_display = ('loan_no', 'borrower_name', 'principal_amount', 'remaining_due', 'status', 'created_at')
     search_fields = ('loan_no', 'borrower_name', 'phone', 'email')
     list_filter = ('status', 'created_at')
     readonly_fields = ('created_at',)
     actions = ['export_loans_csv', 'export_loans_pdf']
+    inlines = [PaymentInline]
 
-    # 📊 Export as CSV
     def export_loans_csv(self, request, queryset):
         response = HttpResponse(content_type='text/csv')
         response['Content-Disposition'] = 'attachment; filename="loans.csv"'
@@ -84,7 +48,6 @@ class LoanAdmin(admin.ModelAdmin):
         return response
     export_loans_csv.short_description = "Export as CSV"
 
-    # 🧾 Export as PDF
     def export_loans_pdf(self, request, queryset):
         response = HttpResponse(content_type='application/pdf')
         response['Content-Disposition'] = 'attachment; filename="loans.pdf"'
@@ -123,13 +86,15 @@ class LoanAdmin(admin.ModelAdmin):
     export_loans_pdf.short_description = "Export as PDF"
 
 
+def mark_as_paid(modeladmin, request, queryset):
+    for payment in queryset:
+        payment.mark_paid()
+mark_as_paid.short_description = "Mark selected payments as PAID"
 
 @admin.register(Payment)
 class PaymentAdmin(admin.ModelAdmin):
-    list_display = ('loan', 'amount', 'due_date', 'paid_date', 'status')
-    list_filter = ('status',)
-    search_fields = ('loan__loan_no',)
-
-
-
-    
+    list_display = ('loan', 'amount', 'due_date', 'status', 'paid_date', 'mode')
+    list_filter = ('status', 'mode')
+    search_fields = ('loan__loan_no', 'loan__borrower_name')
+    readonly_fields = ('paid_date',)
+    actions = [mark_as_paid]
