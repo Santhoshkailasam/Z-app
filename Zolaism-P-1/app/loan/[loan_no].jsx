@@ -10,6 +10,8 @@ import { getLoanSummary } from '../../services/loanSummary';
 import * as Print from 'expo-print';
 import { Picker } from '@react-native-picker/picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as FileSystem from 'expo-file-system/legacy';
+
 
 
 
@@ -33,6 +35,7 @@ export default function LoanDetail() {
   const [paymentMethod, setPaymentMethod] = useState('gpay');
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [invoiceData, setInvoiceData] = useState(null);
+  
 
  useEffect(() => {
   if (!loan_no) return;
@@ -59,22 +62,82 @@ export default function LoanDetail() {
     setPaymentAmount('');
     setShowPaymentModal(true);
   };
+ const generateInvoicePDF = async (payment) => {
+  console.log('🧾 START INVOICE GENERATION');
+  console.log('📄 PAYMENT DATA:', payment);
+
+  const html = `
+    <html>
+      <body style="font-family: Arial; padding: 20px;">
+        <h2>Invoice</h2>
+        <p><b>Transaction ID:</b> ${payment.transactionId}</p>
+        <p><b>Loan ID:</b> ${payment.loanId}</p>
+        <p><b>Amount:</b> ₹${payment.amount}</p>
+        <p><b>Payment Method:</b> ${payment.paymentMethod}</p>
+        <p><b>Date:</b> ${payment.date}</p>
+        <p><b>Time:</b> ${payment.time}</p>
+        <p><b>Status:</b> ${payment.status}</p>
+      </body>
+    </html>
+  `;
+
+  try {
+    console.log('🖨️ TRYING PDF GENERATION');
+
+    const result = await Print.printToFileAsync({ html });
+    console.log('📄 PRINT RESULT:', result);
+
+    if (!result?.uri) {
+      throw new Error('No PDF URI returned');
+    }
+
+    const pdfPath =
+      FileSystem.documentDirectory +
+      `invoice_${payment.transactionId}.pdf`;
+
+    await FileSystem.moveAsync({
+      from: result.uri,
+      to: pdfPath,
+    });
+
+    console.log('✅ PDF GENERATED:', pdfPath);
+    return pdfPath;
+  } catch (err) {
+    console.warn('⚠️ PDF FAILED → FALLBACK TO HTML');
+    console.warn('❌ PDF ERROR:', err?.message);
+
+    const htmlPath =
+      FileSystem.documentDirectory +
+      `invoice_${payment.transactionId}.html`;
+
+    await FileSystem.writeAsStringAsync(htmlPath, html, {
+      encoding: 'utf8', // ✅ FIXED
+    });
+
+    console.log('✅ HTML INVOICE SAVED:', htmlPath);
+    return htmlPath;
+  }
+};
+
+
   
 
 const handlePayment = async () => {
+  console.log('💰 PAYMENT STARTED');
+
   const enteredAmount = parseFloat(paymentAmount);
   const dueAmount = Number(selectedPayment?.amount || 0);
 
-  if (!paymentAmount || isNaN(enteredAmount)) {
-    Alert.alert('Invalid Amount', 'Please enter a valid amount');
+  console.log('➡️ ENTERED AMOUNT:', enteredAmount);
+  console.log('➡️ DUE AMOUNT:', dueAmount);
+
+  if (!paymentAmount || isNaN(enteredAmount) || enteredAmount <= 0) {
+    Alert.alert('Invalid Amount');
     return;
   }
-  if (enteredAmount <= 0) {
-    Alert.alert('Invalid Amount', 'Amount must be greater than 0');
-    return;
-  }
+
   if (enteredAmount > dueAmount) {
-    Alert.alert('Amount Exceeded', `Payment amount cannot exceed ₹${dueAmount}`);
+    Alert.alert('Amount Exceeded');
     return;
   }
 
@@ -89,31 +152,49 @@ const handlePayment = async () => {
     loanId: loanData.loan_no,
   };
 
+  console.log('🧾 PAYMENT DATA CREATED:', paymentData);
+
+  let invoicePath;
+
   try {
-    // ✅ SAVE TO ASYNC STORAGE
-    const existing = await AsyncStorage.getItem('PAYMENT_HISTORY');
-    const history = existing ? JSON.parse(existing) : [];
-
-    const updatedHistory = [paymentData, ...history];
-
-    await AsyncStorage.setItem(
-      'PAYMENT_HISTORY',
-      JSON.stringify(updatedHistory)
-    );
-
-    // UI updates
-    setShowPaymentModal(false);
-    setInvoiceData(paymentData);
-    setShowInvoiceModal(true);
-
-    Alert.alert('Payment Successful', `₹${enteredAmount} has been paid successfully`);
-
-    fetchLoanDetails();
-  } catch (error) {
-    console.error(error);
-    Alert.alert('Error', 'Failed to save payment');
+    invoicePath = await generateInvoicePDF(paymentData);
+    console.log('📎 INVOICE PATH RECEIVED:', invoicePath);
+  } catch (e) {
+    console.error('❌ INVOICE ERROR:', e);
+    Alert.alert('Error', e.message || 'Invoice generation failed');
+    return;
   }
+
+  const fullPaymentData = {
+    ...paymentData,
+    invoicePath,
+  };
+
+  console.log('📦 FINAL PAYMENT OBJECT:', fullPaymentData);
+
+  const existing = await AsyncStorage.getItem('PAYMENT_HISTORY');
+  const history = existing ? JSON.parse(existing) : [];
+
+  console.log('📚 OLD HISTORY COUNT:', history.length);
+
+  const updatedHistory = [fullPaymentData, ...history];
+
+  await AsyncStorage.setItem(
+    'PAYMENT_HISTORY',
+    JSON.stringify(updatedHistory)
+  );
+
+  console.log('✅ PAYMENT SAVED TO STORAGE');
+  console.log('📚 NEW HISTORY COUNT:', updatedHistory.length);
+  setShowPaymentModal(false);   
+  setSelectedPayment(null);
+  setPaymentAmount('');
+
+  setInvoiceData(fullPaymentData);
+  setShowInvoiceModal(true);
 };
+
+
 
 
 const handlePrintInvoice = async () => {
@@ -130,8 +211,10 @@ const handlePrintInvoice = async () => {
     `;
     await Print.printAsync({ html });
   } catch (e) {
-    Alert.alert('Error', 'Unable to print invoice');
-  }
+  console.error('PAYMENT ERROR:', e);
+  Alert.alert('Error', e?.message || 'Failed to process payment');
+}
+
 };
 
   const handleCloseModal = () => {

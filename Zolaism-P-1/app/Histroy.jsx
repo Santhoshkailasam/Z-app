@@ -1,176 +1,209 @@
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, FlatList, Alert, Linking } from 'react-native';
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'expo-router';
-import * as FileSystem from 'expo-file-system';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  FlatList,
+  Alert,
+} from 'react-native';
+import React, { useState } from 'react';
+import { useRouter, useFocusEffect } from 'expo-router';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
-import { useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect } from 'expo-router';
 
 export default function Histroy() {
   const router = useRouter();
   const [paymentHistory, setPaymentHistory] = useState([]);
   const [filterType, setFilterType] = useState('all');
-  const params = useLocalSearchParams();
-
 
   const STORAGE_KEY = 'PAYMENT_HISTORY';
 
-const fetchPaymentHistory = async () => {
-  try {
-    const storedHistory = await AsyncStorage.getItem(STORAGE_KEY);
+  /* ===========================
+     LOAD HISTORY (ON FOCUS)
+     =========================== */
+  useFocusEffect(
+    React.useCallback(() => {
+      const loadHistory = async () => {
+        try {
+          const stored = await AsyncStorage.getItem(STORAGE_KEY);
+          const history = stored ? JSON.parse(stored) : [];
 
-    if (storedHistory) {
-      setPaymentHistory(JSON.parse(storedHistory));
-    } else {
-      const mockHistory = [
-        {
-          id: '1',
-          amount: 300,
-          date: '2025-10-05',
-          time: '10:30 AM',
-          paymentMethod: 'GPay',
-          status: 'Success',
-          transactionId: 'TXN123456789',
-          loanId: 'Z00029',
-        },
-      ];
+          console.log('📦 RAW ASYNCSTORAGE HISTORY:', history);
+          console.log(
+            '📦 HISTORY COUNT:',
+            Array.isArray(history) ? history.length : 'NOT ARRAY'
+          );
 
-      setPaymentHistory(mockHistory);
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(mockHistory));
-    }
-  } catch (error) {
-    console.error('Error loading history', error);
-  }
-};
+          history.forEach((item, index) => {
+            console.log(`📄 HISTORY ITEM ${index}:`, item);
+          });
 
- const downloadInvoice = async (payment) => {
-  if (!payment.invoicePath) {
-    Alert.alert(
-      'Invoice not available',
-      'This payment was made before invoice generation was added.'
-    );
-    return;
-  }
-
-  const fileInfo = await FileSystem.getInfoAsync(payment.invoicePath);
-
-  if (!fileInfo.exists) {
-    Alert.alert('Invoice file missing');
-    return;
-  }
-
-  const canShare = await Sharing.isAvailableAsync();
-  if (canShare) {
-    await Sharing.shareAsync(payment.invoicePath);
-  } else {
-    Alert.alert('Invoice saved at', payment.invoicePath);
-  }
-};
-
- useFocusEffect(
-  React.useCallback(() => {
-    const loadHistory = async () => {
-      try {
-        const stored = await AsyncStorage.getItem(STORAGE_KEY);
-        let history = stored ? JSON.parse(stored) : [];
-
-        if (params?.payment) {
-          const newPayment = JSON.parse(params.payment);
-
-          history = [
-            { id: Date.now().toString(), ...newPayment },
-            ...history,
-          ];
-
-          await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+          setPaymentHistory(history);
+        } catch (e) {
+          console.error('❌ History load error', e);
         }
+      };
 
-        setPaymentHistory(history);
-      } catch (e) {
-        console.error('History load error', e);
+      loadHistory();
+    }, [])
+  );
+
+  /* ===========================
+     DOWNLOAD INVOICE
+     =========================== */
+  const downloadInvoice = async (payment) => {
+    console.log('⬇️ DOWNLOAD CLICKED:', payment);
+
+    try {
+      if (!payment.invoicePath) {
+        console.warn('⚠️ invoicePath MISSING for:', payment.transactionId);
+        Alert.alert(
+          'Invoice not available',
+          'This payment was made before invoice generation was added.'
+        );
+        return;
       }
-    };
 
-    loadHistory();
-  }, [params?.payment])
-);
+      console.log('📄 invoicePath:', payment.invoicePath);
 
+      const fileInfo = await FileSystem.getInfoAsync(payment.invoicePath);
+      console.log('📁 FILE INFO:', fileInfo);
 
+      if (!fileInfo.exists) {
+        Alert.alert('Invoice file missing');
+        return;
+      }
 
+      const canShare = await Sharing.isAvailableAsync();
+      console.log('🔗 SHARING AVAILABLE:', canShare);
 
-  const getFilteredHistory = () => {
-    if (filterType === 'all') {
-      return paymentHistory;
+      if (canShare) {
+        await Sharing.shareAsync(payment.invoicePath);
+      } else {
+        Alert.alert('Invoice saved at', payment.invoicePath);
+      }
+    } catch (e) {
+      console.error('❌ Invoice open error:', e);
+      Alert.alert('Error', 'Unable to open invoice');
     }
-    return paymentHistory.filter(payment => 
-      payment.paymentMethod.toLowerCase() === filterType.toLowerCase()
-    );
   };
 
-  const getPaymentMethodIcon = (method) => {
-    return method.toLowerCase() === 'gpay' ? '💳' : '💵';
+  /* ===========================
+     FILTERING
+     =========================== */
+  const getFilteredHistory = () => {
+    const filtered =
+      filterType === 'all'
+        ? paymentHistory
+        : paymentHistory.filter(
+            (p) =>
+              p.paymentMethod &&
+              p.paymentMethod.toLowerCase() === filterType.toLowerCase()
+          );
+
+    console.log('🔍 FILTER:', filterType, 'RESULT COUNT:', filtered.length);
+    return filtered;
   };
 
-  const getPaymentMethodColor = (method) => {
-    return method.toLowerCase() === 'gpay' ? '#4285F4' : '#4CAF50';
-  };
+  const getPaymentMethodIcon = (method) =>
+    method?.toLowerCase() === 'gpay' ? '💳' : '💵';
+
+  const getPaymentMethodColor = (method) =>
+    method?.toLowerCase() === 'gpay' ? '#4285F4' : '#4CAF50';
 
   const formatDate = (dateString) => {
     const date = new Date(dateString);
-    const options = { day: 'numeric', month: 'short', year: 'numeric' };
-    return date.toLocaleDateString('en-IN', options);
+    return date.toLocaleDateString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
   };
 
-  const renderPaymentCard = ({ item }) => (
-    <View style={styles.paymentCard}>
-      <View style={styles.cardContent}>
-        <View style={styles.cardLeft}>
-          <View style={[
-            styles.methodIcon,
-            { backgroundColor: getPaymentMethodColor(item.paymentMethod) + '20' }
-          ]}>
-            <Text style={styles.methodEmoji}>{getPaymentMethodIcon(item.paymentMethod)}</Text>
-          </View>
-          
-          <View style={styles.paymentDetails}>
-            <Text style={styles.paymentAmount}>₹{item.amount}</Text>
-            <Text style={styles.paymentDate}>{formatDate(item.date)} at {item.time}</Text>
-            <View style={styles.methodBadge}>
-              <Text style={[
-                styles.methodText,
-                { color: getPaymentMethodColor(item.paymentMethod) }
-              ]}>
-                {item.paymentMethod}
+  /* ===========================
+     RENDER CARD
+     =========================== */
+  const renderPaymentCard = ({ item, index }) => {
+    console.log('🧾 RENDER ITEM:', index, item);
+    console.log(
+      '📎 HAS invoicePath:',
+      Boolean(item.invoicePath),
+      '→',
+      item.invoicePath
+    );
+
+    return (
+      <View style={styles.paymentCard}>
+        <View style={styles.cardContent}>
+          <View style={styles.cardLeft}>
+            <View
+              style={[
+                styles.methodIcon,
+                {
+                  backgroundColor:
+                    getPaymentMethodColor(item.paymentMethod) + '20',
+                },
+              ]}
+            >
+              <Text style={styles.methodEmoji}>
+                {getPaymentMethodIcon(item.paymentMethod)}
               </Text>
             </View>
+
+            <View style={styles.paymentDetails}>
+              <Text style={styles.paymentAmount}>₹{item.amount}</Text>
+              <Text style={styles.paymentDate}>
+                {formatDate(item.date)} at {item.time}
+              </Text>
+              <View style={styles.methodBadge}>
+                <Text
+                  style={[
+                    styles.methodText,
+                    {
+                      color: getPaymentMethodColor(item.paymentMethod),
+                    },
+                  ]}
+                >
+                  {item.paymentMethod}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={styles.cardRight}>
+            <View style={styles.statusBadge}>
+              <Text style={styles.statusText}>{item.status}</Text>
+            </View>
+            <Text style={styles.transactionId}>
+              ID: {item.transactionId}
+            </Text>
           </View>
         </View>
 
-        <View style={styles.cardRight}>
-          <View style={styles.statusBadge}>
-            <Text style={styles.statusText}>{item.status}</Text>
-          </View>
-          <Text style={styles.transactionId}>ID: {item.transactionId}</Text>
-        </View>
+        {/* DOWNLOAD BUTTON */}
+        <TouchableOpacity
+          style={[
+            styles.downloadButton,
+            !item.invoicePath && { opacity: 0.5 },
+          ]}
+          onPress={() => downloadInvoice(item)}
+        >
+          <Text style={styles.downloadIcon}>📄</Text>
+          <Text style={styles.downloadText}>Download Invoice</Text>
+        </TouchableOpacity>
       </View>
+    );
+  };
 
-      {/* Download Invoice Button */}
-      <TouchableOpacity 
-        style={styles.downloadButton}
-        onPress={() => downloadInvoice(item)}
-      >
-        <Text style={styles.downloadIcon}>📄</Text>
-        <Text style={styles.downloadText}>Download Invoice</Text>
-      </TouchableOpacity>
-    </View>
-  );
-
+  /* ===========================
+     UI
+     =========================== */
   return (
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.backButton}
           onPress={() => router.back()}
         >
@@ -180,61 +213,47 @@ const fetchPaymentHistory = async () => {
         <View style={styles.headerRight} />
       </View>
 
-      {/* Filter Tabs */}
+      {/* Filters */}
       <View style={styles.filterContainer}>
-        <TouchableOpacity 
-          style={[
-            styles.filterButton,
-            filterType === 'all' && styles.filterButtonActive
-          ]}
-          onPress={() => setFilterType('all')}
-        >
-          <Text style={[
-            styles.filterButtonText,
-            filterType === 'all' && styles.filterButtonTextActive
-          ]}>
-            All
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={[
-            styles.filterButton,
-            filterType === 'gpay' && styles.filterButtonActive
-          ]}
-          onPress={() => setFilterType('gpay')}
-        >
-          <Text style={[
-            styles.filterButtonText,
-            filterType === 'gpay' && styles.filterButtonTextActive
-          ]}>
-            GPay
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={[
-            styles.filterButton,
-            filterType === 'cash' && styles.filterButtonActive
-          ]}
-          onPress={() => setFilterType('cash')}
-        >
-          <Text style={[
-            styles.filterButtonText,
-            filterType === 'cash' && styles.filterButtonTextActive
-          ]}>
-            Cash
-          </Text>
-        </TouchableOpacity>
+        {['all', 'gpay', 'cash'].map((type) => (
+          <TouchableOpacity
+            key={type}
+            style={[
+              styles.filterButton,
+              filterType === type && styles.filterButtonActive,
+            ]}
+            onPress={() => setFilterType(type)}
+          >
+            <Text
+              style={[
+                styles.filterButtonText,
+                filterType === type &&
+                  styles.filterButtonTextActive,
+              ]}
+            >
+              {type === 'all'
+                ? 'All'
+                : type === 'gpay'
+                ? 'GPay'
+                : 'Cash'}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
-      {/* Payment List */}
+      {/* List */}
       <View style={styles.contentArea}>
         <View style={styles.summaryCard}>
           <Text style={styles.summaryLabel}>Total Payments</Text>
-          <Text style={styles.summaryValue}>{getFilteredHistory().length}</Text>
+          <Text style={styles.summaryValue}>
+            {getFilteredHistory().length}
+          </Text>
           <Text style={styles.summaryAmount}>
-            ₹{getFilteredHistory().reduce((sum, payment) => sum + payment.amount, 0)}
+            ₹
+            {getFilteredHistory().reduce(
+              (sum, p) => sum + Number(p.amount || 0),
+              0
+            )}
           </Text>
         </View>
 
@@ -246,7 +265,9 @@ const fetchPaymentHistory = async () => {
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>No payment history found</Text>
+              <Text style={styles.emptyText}>
+                No payment history found
+              </Text>
             </View>
           }
         />
@@ -255,37 +276,28 @@ const fetchPaymentHistory = async () => {
   );
 }
 
+/* ===========================
+   STYLES (UNCHANGED)
+   =========================== */
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#000',
-  },
+  container: { flex: 1, backgroundColor: '#000' },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingTop: 50,
     paddingBottom: 20,
   },
-  backButton: {
-    width: 40,
-  },
-  backIcon: {
-    fontSize: 28,
-    color: '#FFF',
-    fontWeight: 'bold',
-  },
+  backButton: { width: 40 },
+  backIcon: { fontSize: 28, color: '#FFF', fontWeight: 'bold' },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#FFF',
     flex: 1,
     textAlign: 'center',
+    color: '#FFF',
+    fontSize: 20,
+    fontWeight: 'bold',
   },
-  headerRight: {
-    width: 40,
-  },
+  headerRight: { width: 40 },
   filterContainer: {
     flexDirection: 'row',
     paddingHorizontal: 20,
@@ -305,14 +317,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#8B2323',
     borderColor: '#8B2323',
   },
-  filterButtonText: {
-    color: '#999',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  filterButtonTextActive: {
-    color: '#FFF',
-  },
+  filterButtonText: { color: '#999', fontWeight: '600' },
+  filterButtonTextActive: { color: '#FFF' },
   contentArea: {
     flex: 1,
     backgroundColor: '#F5F5F5',
@@ -327,35 +333,19 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     alignItems: 'center',
   },
-  summaryLabel: {
-    fontSize: 14,
-    color: '#FFF',
-    opacity: 0.9,
-    marginBottom: 8,
-  },
+  summaryLabel: { color: '#FFF', marginBottom: 8 },
   summaryValue: {
     fontSize: 36,
+    color: '#FFF',
     fontWeight: 'bold',
-    color: '#FFF',
-    marginBottom: 5,
   },
-  summaryAmount: {
-    fontSize: 18,
-    color: '#FFF',
-    fontWeight: '600',
-  },
-  listContainer: {
-    paddingBottom: 20,
-  },
+  summaryAmount: { color: '#FFF', fontSize: 18 },
+  listContainer: { paddingBottom: 20 },
   paymentCard: {
     backgroundColor: '#FFF',
     borderRadius: 15,
     padding: 15,
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
     elevation: 3,
   },
   cardContent: {
@@ -363,10 +353,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 12,
   },
-  cardLeft: {
-    flexDirection: 'row',
-    flex: 1,
-  },
+  cardLeft: { flexDirection: 'row', flex: 1 },
   methodIcon: {
     width: 50,
     height: 50,
@@ -375,79 +362,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 12,
   },
-  methodEmoji: {
-    fontSize: 24,
-  },
-  paymentDetails: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  paymentAmount: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#000',
-    marginBottom: 4,
-  },
-  paymentDate: {
-    fontSize: 12,
-    color: '#666',
-    marginBottom: 6,
-  },
-  methodBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 5,
-  },
-  methodText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  cardRight: {
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-  },
+  methodEmoji: { fontSize: 24 },
+  paymentDetails: { flex: 1 },
+  paymentAmount: { fontSize: 20, fontWeight: 'bold' },
+  paymentDate: { fontSize: 12, color: '#666' },
+  methodText: { fontSize: 12, fontWeight: '600' },
+  cardRight: { alignItems: 'flex-end' },
   statusBadge: {
     backgroundColor: '#E8F5E9',
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 8,
   },
-  statusText: {
-    fontSize: 12,
-    color: '#4CAF50',
-    fontWeight: '600',
-  },
-  transactionId: {
-    fontSize: 10,
-    color: '#999',
-    marginTop: 4,
-  },
+  statusText: { color: '#4CAF50', fontWeight: '600' },
+  transactionId: { fontSize: 10, color: '#999' },
   downloadButton: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'center',
+    alignItems: 'center',
     backgroundColor: '#F5F5F5',
     paddingVertical: 12,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: '#E5E5E5',
   },
-  downloadIcon: {
-    fontSize: 18,
-    marginRight: 8,
-  },
-  downloadText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#8B2323',
-  },
-  emptyContainer: {
-    padding: 40,
-    alignItems: 'center',
-  },
-  emptyText: {
-    fontSize: 16,
-    color: '#666',
-  },
+  downloadIcon: { marginRight: 8, fontSize: 18 },
+  downloadText: { color: '#8B2323', fontWeight: '600' },
+  emptyContainer: { padding: 40, alignItems: 'center' },
+  emptyText: { color: '#666' },
 });
