@@ -119,8 +119,43 @@ export default function LoanDetail() {
   }
 };
 
+const updateLoanAfterPayment = (paidAmount) => {
+  setLoanData(prev => {
+    if (!prev) return prev;
 
-  
+    // 1️⃣ Reduce outstanding
+    const newOutstanding =
+      Math.max(0, Number(prev.outstanding) - paidAmount);
+
+    // 2️⃣ Reduce remaining due
+    const newRemainingDue =
+      Math.max(
+        0,
+        Number(prev.remaining_due || prev.remainingDue) - paidAmount
+      );
+
+    // 3️⃣ Update due lists
+    const updateDues = (dues = []) =>
+      dues
+        .map(due => {
+          if (due === selectedPayment) {
+            const balance = Number(due.amount) - paidAmount;
+            return balance > 0 ? { ...due, amount: balance } : null;
+          }
+          return due;
+        })
+        .filter(Boolean);
+
+    return {
+      ...prev,
+      outstanding: newOutstanding,
+      remaining_due: newRemainingDue,
+      overdue_dues: updateDues(prev.overdue_dues),
+      upcoming_dues: updateDues(prev.upcoming_dues),
+    };
+  });
+};
+
 
 const handlePayment = async () => {
   console.log('💰 PAYMENT STARTED');
@@ -183,6 +218,7 @@ const handlePayment = async () => {
     'PAYMENT_HISTORY',
     JSON.stringify(updatedHistory)
   );
+ updateLoanAfterPayment(enteredAmount);
 
   console.log('✅ PAYMENT SAVED TO STORAGE');
   console.log('📚 NEW HISTORY COUNT:', updatedHistory.length);
