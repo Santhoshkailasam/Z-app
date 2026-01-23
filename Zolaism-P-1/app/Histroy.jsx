@@ -1,22 +1,17 @@
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  FlatList,
-  Alert,
-} from 'react-native';
+import {View,Text,StyleSheet,TouchableOpacity,FlatList,Alert,Modal} from 'react-native';
 import React, { useState } from 'react';
 import { useRouter, useFocusEffect } from 'expo-router';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
+import * as Print from 'expo-print';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Backbutton from './component/backbutton';
 export default function Histroy() {
   const router = useRouter();
   const [paymentHistory, setPaymentHistory] = useState([]);
   const [filterType, setFilterType] = useState('all');
-
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [invoiceData, setInvoiceData] = useState(null);
   const STORAGE_KEY = 'PAYMENT_HISTORY';
 
   /* ===========================
@@ -66,6 +61,37 @@ export default function Histroy() {
       Alert.alert('Error', 'Unable to open invoice');
     }
   };
+
+  const openInvoicePopup = (payment) => {
+  if (!payment.invoicePath) {
+    Alert.alert(
+      'Invoice not available',
+      'This payment does not have an invoice.'
+    );
+    return;
+  }
+
+  setInvoiceData(payment);
+  setShowInvoiceModal(true);
+};
+const handlePrintInvoice = async () => {
+  try {
+    const html = `
+      <h2>Invoice</h2>
+      <p><b>Transaction ID:</b> ${invoiceData?.transactionId}</p>
+      <p><b>Loan ID:</b> ${invoiceData?.loanId}</p>
+      <p><b>Amount:</b> ₹${invoiceData?.amount}</p>
+      <p><b>Payment Method:</b> ${invoiceData?.paymentMethod}</p>
+      <p><b>Date:</b> ${invoiceData?.date}</p>
+      <p><b>Time:</b> ${invoiceData?.time}</p>
+      <p><b>Status:</b> ${invoiceData?.status}</p>
+    `;
+    await Print.printAsync({ html });
+  } catch (e) {
+    Alert.alert('Error', 'Unable to print invoice');
+  }
+};
+
 
   /* ===========================
      FILTERING
@@ -139,9 +165,10 @@ export default function Histroy() {
             styles.invoiceButton,
             !item.invoicePath && { opacity: 0.4 },
           ]}
-          onPress={() => downloadInvoice(item)}
+         onPress={() => openInvoicePopup(item)}
+
         >
-          <Text style={styles.invoiceText}>Download Invoice</Text>
+          <Text style={styles.invoiceText}>Show Invoice</Text>
         </TouchableOpacity>
       </View>
     );
@@ -218,8 +245,71 @@ export default function Histroy() {
             </View>
           }
         />
+
+
+      </View>
+      
+      <Modal
+         visible={showInvoiceModal}
+         transparent
+         animationType="fade"
+         onRequestClose={() => setShowInvoiceModal(false)}
+         >
+         <View style={invoiceStyles.overlay}>
+           <View style={invoiceStyles.modal}>
+
+             <Text style={invoiceStyles.title}>Invoice</Text>
+             <Text style={invoiceStyles.success}>Payment Successful</Text>
+
+            <View style={invoiceStyles.row}>
+               <Text style={invoiceStyles.label}>Transaction ID</Text>
+               <Text style={invoiceStyles.value}>
+               {invoiceData?.transactionId}
+               </Text>
+             </View>
+
+             <View style={invoiceStyles.row}>
+               <Text style={invoiceStyles.label}>Amount</Text>
+               <Text style={invoiceStyles.value}>
+                 ₹{invoiceData?.amount}
+               </Text>
+             </View>
+
+             <View style={invoiceStyles.row}>
+               <Text style={invoiceStyles.label}>Method</Text>
+               <Text style={invoiceStyles.value}>
+                 {invoiceData?.paymentMethod}
+               </Text>
+             </View>
+
+             <View style={invoiceStyles.row}>
+               <Text style={invoiceStyles.label}>Date</Text>
+               <Text style={invoiceStyles.value}>
+                 {invoiceData?.date} • {invoiceData?.time}
+                      </Text>
+            </View>
+       
+             <View style={invoiceStyles.buttonRow}>
+             <TouchableOpacity
+               style={invoiceStyles.printButton}
+               >
+                 <Text style={invoiceStyles.buttonText}>Print</Text>
+               </TouchableOpacity>
+
+               <TouchableOpacity
+                   style={invoiceStyles.doneButton}
+                   onPress={() => setShowInvoiceModal(false)}
+                >
+            <Text style={invoiceStyles.buttonText}>Done</Text>
+         </TouchableOpacity>
+       </View>
+
       </View>
     </View>
+  </Modal>
+    </View>
+
+    
   );
 }
 
@@ -354,12 +444,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E5E5E5',
     alignItems: 'center',
-    backgroundColor: '#FAFAFA',
+    backgroundColor: '#249f22',
+    
   },
   invoiceText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#8B2323',
+    color: '#ffffff',
   },
 
   emptyContainer: {
@@ -368,5 +459,63 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     color: '#666',
+  },
+});
+const invoiceStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modal: {
+    width: '90%',
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    padding: 20,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  success: {
+    color: '#1E8E3E',
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 15,
+  },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  label: { color: '#666' },
+  value: { fontWeight: '600' },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 20,
+  },
+  printButton: {
+    flex: 1,
+    backgroundColor: '#249f22',
+    padding: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  doneButton: {
+    flex: 1,
+    backgroundColor: '#1A73E8',
+    padding: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  buttonText: {
+    color: '#FFF',
+    fontWeight:'bold',
+    fontSize: 18 ,
+
   },
 });

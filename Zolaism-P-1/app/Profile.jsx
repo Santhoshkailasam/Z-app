@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { getWorkerProfile } from '../services/workerService';
-
+import { Ionicons } from '@expo/vector-icons';
 export default function Profile() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -52,9 +52,12 @@ export default function Profile() {
     <ScrollView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <Text style={styles.backIcon}>←</Text>
-        </TouchableOpacity>
+        <TouchableOpacity
+             style={styles.iconButton}
+             onPress={() => router.back()}
+           >
+             <Ionicons name="arrow-back" size={26} color="#FFF" />
+           </TouchableOpacity>
       </View>
 
       {/* Profile Section */}
@@ -141,8 +144,6 @@ export default function Profile() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
   header: { paddingHorizontal: 20, paddingTop: 50, paddingBottom: 20 },
-  backButton: { width: 40, height: 40, justifyContent: 'center' },
-  backIcon: { fontSize: 28, color: '#FFF', fontWeight: 'bold' },
   profileSection: { alignItems: 'center', paddingVertical: 30 },
   profileIconLarge: { width: 100, height: 100, borderRadius: 50, backgroundColor: '#FFF', justifyContent: 'center', alignItems: 'center', marginBottom: 15 },
   profileLetterLarge: { fontSize: 48, fontWeight: 'bold', color: '#000' },

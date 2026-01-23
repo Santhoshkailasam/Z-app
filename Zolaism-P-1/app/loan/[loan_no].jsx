@@ -24,10 +24,7 @@ export default function LoanDetail() {
     <Text style={invoiceStyles.value}>{value || '-'}</Text>
   </View>
 );
-  const router = useRouter();
- const params = useLocalSearchParams();
- const loan_no =typeof params.loan_no === 'string' ? params.loan_no : undefined;
-
+  
   const [loanData, setLoanData] = useState(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState(null);
@@ -37,7 +34,9 @@ export default function LoanDetail() {
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [invoiceData, setInvoiceData] = useState(null);
   const LOAN_CACHE_KEY = (loanNo) => `LOAN_CACHE_${loanNo}`;
-
+  const router = useRouter();
+  const params = useLocalSearchParams();
+  const loan_no =typeof params.loan_no === 'string' ? params.loan_no : undefined;
 
  useEffect(() => {
   if (!loan_no) return;
@@ -79,7 +78,7 @@ export default function LoanDetail() {
     setPaymentAmount('');
     setShowPaymentModal(true);
   };
- const generateInvoicePDF = async (payment) => {
+  const generateInvoicePDF = async (payment) => {
   console.log('🧾 START INVOICE GENERATION');
   console.log('📄 PAYMENT DATA:', payment);
 
@@ -385,20 +384,26 @@ const handlePrintInvoice = async () => {
             <Text style={styles.chartTitle}>Amount Due</Text>
             <View style={styles.chartContainer}>
             {/* piechart */}
-             {hasChartData && (
-           <PieChart
-             data={pieChartData}
-             width={Dimensions.get('window').width - 40}
-             height={220}
-             chartConfig={{ color: () => '#000' }}
-             accessor="population"
-             backgroundColor="transparent"
-             paddingLeft="15"
-             absolute
+           
+            <View style={styles.chartWrapper}>
+                {hasChartData && (
+                  <PieChart
+                    data={pieChartData}
+            width={Dimensions.get('window').width}
+              height={220}
+              chartConfig={{
+                color: () => '#000',
+              }}
+              accessor="population"
+              backgroundColor="transparent"
+              absolute
              hasLegend={false}
-             style={{ alignSelf: 'center' }}
-           />
-         )}
+             center={[Dimensions.get('window').width / 4, 0]}
+            />
+              )}
+          </View>
+
+         
               <View style={styles.chartLegend}>
                 <View style={styles.legendItem}>
                   <View style={[styles.legendColor, { backgroundColor: '#6B00E6' }]} />
@@ -962,21 +967,22 @@ const invoiceStyles = StyleSheet.create({
   },
   printButton: {
     flex: 1,
-    backgroundColor: '#444',
+    backgroundColor: '#249f22',
     padding: 14,
     borderRadius: 10,
     alignItems: 'center',
   },
   doneButton: {
     flex: 1,
-    backgroundColor: '#8B2323',
+    backgroundColor: '#1A73E8',
     padding: 14,
     borderRadius: 10,
     alignItems: 'center',
   },
-  buttonText: {
+   buttonText: {
     color: '#FFF',
-    fontWeight: '600',
+    fontWeight:'bold',
+    fontSize: 18 ,
   },
 });
 
