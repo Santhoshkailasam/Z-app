@@ -11,7 +11,8 @@ import * as Print from 'expo-print';
 import { Picker } from '@react-native-picker/picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
-
+import { Ionicons } from '@expo/vector-icons';
+import Backbutton from '../component/backbutton'
 
 
 
@@ -35,7 +36,8 @@ export default function LoanDetail() {
   const [paymentMethod, setPaymentMethod] = useState('gpay');
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [invoiceData, setInvoiceData] = useState(null);
-  
+  const LOAN_CACHE_KEY = (loanNo) => `LOAN_CACHE_${loanNo}`;
+
 
  useEffect(() => {
   if (!loan_no) return;
@@ -45,17 +47,32 @@ export default function LoanDetail() {
 
 
   const fetchLoanDetails = async () => {
-    try {
-      setLoading(true);
-      const data = await getLoanSummary(loan_no);
-      setLoanData(data.summary);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to fetch loan details.');
-      console.error(error);
-    } finally {
+  try {
+    setLoading(true);
+
+    // 1️⃣ Try local cache first
+    const cachedLoan = await AsyncStorage.getItem(
+      LOAN_CACHE_KEY(loan_no)
+    );
+
+    if (cachedLoan) {
+      console.log('✅ Loaded loan from local cache');
+      setLoanData(JSON.parse(cachedLoan));
       setLoading(false);
+      return;
     }
-  };
+
+    // 2️⃣ Fallback to API
+    const data = await getLoanSummary(loan_no);
+    setLoanData(data.summary);
+
+  } catch (error) {
+    Alert.alert('Error', 'Failed to fetch loan details.');
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   const handlePayNowPress = (payment) => {
     setSelectedPayment(payment);
@@ -123,18 +140,15 @@ const updateLoanAfterPayment = (paidAmount) => {
   setLoanData(prev => {
     if (!prev) return prev;
 
-    // 1️⃣ Reduce outstanding
     const newOutstanding =
       Math.max(0, Number(prev.outstanding) - paidAmount);
 
-    // 2️⃣ Reduce remaining due
     const newRemainingDue =
       Math.max(
         0,
         Number(prev.remaining_due || prev.remainingDue) - paidAmount
       );
 
-    // 3️⃣ Update due lists
     const updateDues = (dues = []) =>
       dues
         .map(due => {
@@ -146,15 +160,24 @@ const updateLoanAfterPayment = (paidAmount) => {
         })
         .filter(Boolean);
 
-    return {
+    const updatedLoan = {
       ...prev,
       outstanding: newOutstanding,
       remaining_due: newRemainingDue,
       overdue_dues: updateDues(prev.overdue_dues),
       upcoming_dues: updateDues(prev.upcoming_dues),
     };
+
+    // 🔥 SAVE TO ASYNC STORAGE
+    AsyncStorage.setItem(
+      LOAN_CACHE_KEY(prev.loan_no),
+      JSON.stringify(updatedLoan)
+    );
+
+    return updatedLoan;
   });
 };
+
 
 
 const handlePayment = async () => {
@@ -341,9 +364,8 @@ const handlePrintInvoice = async () => {
       <ScrollView style={styles.container}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-            <Text style={styles.backIcon}>←</Text>
-          </TouchableOpacity>
+          <Backbutton />
+
           <View style={styles.headerCenter}>
             <Text style={styles.headerTitle}> {loanData.borrower_name} </Text>
             <Text style={styles.headerSubtitle}>ID : {loanData.loan_no}</Text>
@@ -584,14 +606,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 50,
     paddingBottom: 30,
-  },
-  backButton: {
-    width: 40,
-  },
-  backIcon: {
-    fontSize: 28,
-    color: '#FFF',
-    fontWeight: 'bold',
   },
   headerCenter: {
     flex: 1,

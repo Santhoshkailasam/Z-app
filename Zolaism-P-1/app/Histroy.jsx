@@ -11,7 +11,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
+import Backbutton from './component/backbutton';
 export default function Histroy() {
   const router = useRouter();
   const [paymentHistory, setPaymentHistory] = useState([]);
@@ -20,7 +20,7 @@ export default function Histroy() {
   const STORAGE_KEY = 'PAYMENT_HISTORY';
 
   /* ===========================
-     LOAD HISTORY (ON FOCUS)
+     LOAD HISTORY ON SCREEN FOCUS
      =========================== */
   useFocusEffect(
     React.useCallback(() => {
@@ -28,23 +28,11 @@ export default function Histroy() {
         try {
           const stored = await AsyncStorage.getItem(STORAGE_KEY);
           const history = stored ? JSON.parse(stored) : [];
-
-          console.log('📦 RAW ASYNCSTORAGE HISTORY:', history);
-          console.log(
-            '📦 HISTORY COUNT:',
-            Array.isArray(history) ? history.length : 'NOT ARRAY'
-          );
-
-          history.forEach((item, index) => {
-            console.log(`📄 HISTORY ITEM ${index}:`, item);
-          });
-
-          setPaymentHistory(history);
+          setPaymentHistory(Array.isArray(history) ? history : []);
         } catch (e) {
-          console.error('❌ History load error', e);
+          console.error('History load error', e);
         }
       };
-
       loadHistory();
     }, [])
   );
@@ -53,38 +41,28 @@ export default function Histroy() {
      DOWNLOAD INVOICE
      =========================== */
   const downloadInvoice = async (payment) => {
-    console.log('⬇️ DOWNLOAD CLICKED:', payment);
-
     try {
       if (!payment.invoicePath) {
-        console.warn('⚠️ invoicePath MISSING for:', payment.transactionId);
         Alert.alert(
           'Invoice not available',
-          'This payment was made before invoice generation was added.'
+          'This payment does not have an invoice.'
         );
         return;
       }
 
-      console.log('📄 invoicePath:', payment.invoicePath);
-
       const fileInfo = await FileSystem.getInfoAsync(payment.invoicePath);
-      console.log('📁 FILE INFO:', fileInfo);
-
       if (!fileInfo.exists) {
         Alert.alert('Invoice file missing');
         return;
       }
 
       const canShare = await Sharing.isAvailableAsync();
-      console.log('🔗 SHARING AVAILABLE:', canShare);
-
       if (canShare) {
         await Sharing.shareAsync(payment.invoicePath);
       } else {
         Alert.alert('Invoice saved at', payment.invoicePath);
       }
     } catch (e) {
-      console.error('❌ Invoice open error:', e);
       Alert.alert('Error', 'Unable to open invoice');
     }
   };
@@ -92,25 +70,14 @@ export default function Histroy() {
   /* ===========================
      FILTERING
      =========================== */
-  const getFilteredHistory = () => {
-    const filtered =
-      filterType === 'all'
-        ? paymentHistory
-        : paymentHistory.filter(
-            (p) =>
-              p.paymentMethod &&
-              p.paymentMethod.toLowerCase() === filterType.toLowerCase()
-          );
-
-    console.log('🔍 FILTER:', filterType, 'RESULT COUNT:', filtered.length);
-    return filtered;
-  };
-
-  const getPaymentMethodIcon = (method) =>
-    method?.toLowerCase() === 'gpay' ? '💳' : '💵';
-
-  const getPaymentMethodColor = (method) =>
-    method?.toLowerCase() === 'gpay' ? '#4285F4' : '#4CAF50';
+  const filteredHistory =
+    filterType === 'all'
+      ? paymentHistory
+      : paymentHistory.filter(
+          (p) =>
+            p.paymentMethod &&
+            p.paymentMethod.toLowerCase() === filterType
+        );
 
   const formatDate = (dateString) => {
     const date = new Date(dateString);
@@ -124,73 +91,57 @@ export default function Histroy() {
   /* ===========================
      RENDER CARD
      =========================== */
-  const renderPaymentCard = ({ item, index }) => {
-    console.log('🧾 RENDER ITEM:', index, item);
-    console.log(
-      '📎 HAS invoicePath:',
-      Boolean(item.invoicePath),
-      '→',
-      item.invoicePath
-    );
+  const renderPaymentCard = ({ item }) => {
+    const isGPay = item.paymentMethod?.toLowerCase() === 'gpay';
 
     return (
       <View style={styles.paymentCard}>
-        <View style={styles.cardContent}>
-          <View style={styles.cardLeft}>
-            <View
+        {/* TOP */}
+        <View style={styles.rowTop}>
+          <Text style={styles.amount}>₹{item.amount}</Text>
+
+          <View
+            style={[
+              styles.methodBadge,
+              { backgroundColor: isGPay ? '#E3F2FD' : '#E8F5E9' },
+            ]}
+          >
+            <Text
               style={[
-                styles.methodIcon,
-                {
-                  backgroundColor:
-                    getPaymentMethodColor(item.paymentMethod) + '20',
-                },
+                styles.methodText,
+                { color: isGPay ? '#1565C0' : '#2E7D32' },
               ]}
             >
-              <Text style={styles.methodEmoji}>
-                {getPaymentMethodIcon(item.paymentMethod)}
-              </Text>
-            </View>
-
-            <View style={styles.paymentDetails}>
-              <Text style={styles.paymentAmount}>₹{item.amount}</Text>
-              <Text style={styles.paymentDate}>
-                {formatDate(item.date)} at {item.time}
-              </Text>
-              <View style={styles.methodBadge}>
-                <Text
-                  style={[
-                    styles.methodText,
-                    {
-                      color: getPaymentMethodColor(item.paymentMethod),
-                    },
-                  ]}
-                >
-                  {item.paymentMethod}
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.cardRight}>
-            <View style={styles.statusBadge}>
-              <Text style={styles.statusText}>{item.status}</Text>
-            </View>
-            <Text style={styles.transactionId}>
-              ID: {item.transactionId}
+              {item.paymentMethod}
             </Text>
           </View>
         </View>
 
-        {/* DOWNLOAD BUTTON */}
+        {/* DATE */}
+        <Text style={styles.dateText}>
+          {formatDate(item.date)} • {item.time}
+        </Text>
+
+        {/* BOTTOM */}
+        <View style={styles.rowBottom}>
+          <View style={styles.statusBadge}>
+            <Text style={styles.statusText}>{item.status}</Text>
+          </View>
+
+          <Text style={styles.transactionId}>
+            TXN: {item.transactionId}
+          </Text>
+        </View>
+
+        {/* INVOICE */}
         <TouchableOpacity
           style={[
-            styles.downloadButton,
-            !item.invoicePath && { opacity: 0.5 },
+            styles.invoiceButton,
+            !item.invoicePath && { opacity: 0.4 },
           ]}
           onPress={() => downloadInvoice(item)}
         >
-          <Text style={styles.downloadIcon}>📄</Text>
-          <Text style={styles.downloadText}>Download Invoice</Text>
+          <Text style={styles.invoiceText}>Download Invoice</Text>
         </TouchableOpacity>
       </View>
     );
@@ -201,19 +152,14 @@ export default function Histroy() {
      =========================== */
   return (
     <View style={styles.container}>
-      {/* Header */}
+      {/* HEADER */}
       <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
-          <Text style={styles.backIcon}>←</Text>
-        </TouchableOpacity>
+        <Backbutton />
         <Text style={styles.headerTitle}>Payment History</Text>
-        <View style={styles.headerRight} />
+        <View style={{ width: 24 }} />
       </View>
 
-      {/* Filters */}
+      {/* FILTERS */}
       <View style={styles.filterContainer}>
         {['all', 'gpay', 'cash'].map((type) => (
           <TouchableOpacity
@@ -226,9 +172,8 @@ export default function Histroy() {
           >
             <Text
               style={[
-                styles.filterButtonText,
-                filterType === type &&
-                  styles.filterButtonTextActive,
+                styles.filterText,
+                filterType === type && styles.filterTextActive,
               ]}
             >
               {type === 'all'
@@ -241,28 +186,30 @@ export default function Histroy() {
         ))}
       </View>
 
-      {/* List */}
+      {/* CONTENT */}
       <View style={styles.contentArea}>
+        {/* SUMMARY */}
         <View style={styles.summaryCard}>
           <Text style={styles.summaryLabel}>Total Payments</Text>
           <Text style={styles.summaryValue}>
-            {getFilteredHistory().length}
+            {filteredHistory.length}
           </Text>
           <Text style={styles.summaryAmount}>
             ₹
-            {getFilteredHistory().reduce(
+            {filteredHistory.reduce(
               (sum, p) => sum + Number(p.amount || 0),
               0
             )}
           </Text>
         </View>
 
+        {/* LIST */}
         <FlatList
-          data={getFilteredHistory()}
+          data={filteredHistory}
           renderItem={renderPaymentCard}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContainer}
           showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 30 }}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyText}>
@@ -277,10 +224,11 @@ export default function Histroy() {
 }
 
 /* ===========================
-   STYLES (UNCHANGED)
+   STYLES
    =========================== */
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
+
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -288,8 +236,7 @@ const styles = StyleSheet.create({
     paddingTop: 50,
     paddingBottom: 20,
   },
-  backButton: { width: 40 },
-  backIcon: { fontSize: 28, color: '#FFF', fontWeight: 'bold' },
+  
   headerTitle: {
     flex: 1,
     textAlign: 'center',
@@ -297,7 +244,7 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: 'bold',
   },
-  headerRight: { width: 40 },
+
   filterContainer: {
     flexDirection: 'row',
     paddingHorizontal: 20,
@@ -306,9 +253,9 @@ const styles = StyleSheet.create({
   },
   filterButton: {
     flex: 1,
-    backgroundColor: '#1A1A1A',
     paddingVertical: 12,
     borderRadius: 10,
+    backgroundColor: '#1A1A1A',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#333',
@@ -317,8 +264,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#8B2323',
     borderColor: '#8B2323',
   },
-  filterButtonText: { color: '#999', fontWeight: '600' },
-  filterButtonTextActive: { color: '#FFF' },
+  filterText: { color: '#999', fontWeight: '600' },
+  filterTextActive: { color: '#FFF' },
+
   contentArea: {
     flex: 1,
     backgroundColor: '#F5F5F5',
@@ -326,68 +274,99 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 30,
     padding: 20,
   },
+
   summaryCard: {
     backgroundColor: '#8B2323',
     borderRadius: 15,
     padding: 20,
-    marginBottom: 20,
     alignItems: 'center',
+    marginBottom: 20,
   },
-  summaryLabel: { color: '#FFF', marginBottom: 8 },
+  summaryLabel: { color: '#FFF' },
   summaryValue: {
     fontSize: 36,
     color: '#FFF',
     fontWeight: 'bold',
   },
   summaryAmount: { color: '#FFF', fontSize: 18 },
-  listContainer: { paddingBottom: 20 },
+
   paymentCard: {
     backgroundColor: '#FFF',
-    borderRadius: 15,
-    padding: 15,
-    marginBottom: 12,
-    elevation: 3,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 14,
   },
-  cardContent: {
+
+  rowTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  cardLeft: { flexDirection: 'row', flex: 1 },
-  methodIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
   },
-  methodEmoji: { fontSize: 24 },
-  paymentDetails: { flex: 1 },
-  paymentAmount: { fontSize: 20, fontWeight: 'bold' },
-  paymentDate: { fontSize: 12, color: '#666' },
-  methodText: { fontSize: 12, fontWeight: '600' },
-  cardRight: { alignItems: 'flex-end' },
+  amount: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#000',
+  },
+
+  methodBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  methodText: {
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+
+  dateText: {
+    fontSize: 13,
+    color: '#666',
+    marginTop: 6,
+  },
+
+  rowBottom: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 10,
+  },
   statusBadge: {
     backgroundColor: '#E8F5E9',
     paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingVertical: 4,
     borderRadius: 8,
   },
-  statusText: { color: '#4CAF50', fontWeight: '600' },
-  transactionId: { fontSize: 10, color: '#999' },
-  downloadButton: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#F5F5F5',
+  statusText: {
+    color: '#2E7D32',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  transactionId: {
+    fontSize: 11,
+    color: '#999',
+  },
+
+  invoiceButton: {
+    marginTop: 14,
     paddingVertical: 12,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: '#E5E5E5',
+    alignItems: 'center',
+    backgroundColor: '#FAFAFA',
   },
-  downloadIcon: { marginRight: 8, fontSize: 18 },
-  downloadText: { color: '#8B2323', fontWeight: '600' },
-  emptyContainer: { padding: 40, alignItems: 'center' },
-  emptyText: { color: '#666' },
+  invoiceText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#8B2323',
+  },
+
+  emptyContainer: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  emptyText: {
+    color: '#666',
+  },
 });
